@@ -14,9 +14,11 @@
 
 ### Command
 
+
 ```bash
 python cleanrl/ppo.py --env-id CartPole-v1 --total-timesteps 100000 --num-envs 1 --seed 1
-···
+```
+```
 ### Result
 
 - Final episodic return: 500
