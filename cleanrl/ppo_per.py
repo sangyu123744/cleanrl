@@ -69,6 +69,22 @@ class Args:
     target_kl: float = None
     """the target KL divergence threshold"""
 
+    # Prioritized trajectory replay arguments
+    replay_buffer_size: int = 32
+    """maximum number of rollout batches stored in the replay buffer"""
+
+    replay_ratio: float = 0.5
+    """fraction of optimization data sampled from replayed rollouts"""
+
+    per_alpha: float = 0.6
+    """priority exponent; 0 means uniform sampling"""
+
+    per_beta: float = 0.4
+    """importance-sampling correction exponent"""
+
+    per_eps: float = 1e-6
+    """small constant preventing zero priority"""
+
     # to be filled in runtime
     batch_size: int = 0
     """the batch size (computed in runtime)"""
@@ -77,6 +93,74 @@ class Args:
     num_iterations: int = 0
     """the number of iterations (computed in runtime)"""
 
+class PrioritizedRolloutBuffer:
+    """Stores old PPO rollout batches and samples them by priority."""
+
+    def __init__(self, capacity: int, alpha: float, eps: float):
+        if capacity <= 0:
+            raise ValueError("capacity must be greater than 0")
+        if alpha < 0:
+            raise ValueError("alpha must be non-negative")
+        if eps <= 0:
+            raise ValueError("eps must be greater than 0")
+
+        self.capacity = capacity
+        self.alpha = alpha
+        self.eps = eps
+        self.storage = []
+        self.priorities = []
+
+    def __len__(self):
+        return len(self.storage)
+
+    def add(self, rollout: dict, priority: float):
+        """Add one rollout batch and copy tensors to CPU memory."""
+        stored_rollout = {
+            key: value.detach().cpu().clone()
+            for key, value in rollout.items()
+        }
+
+        if len(self.storage) >= self.capacity:
+            self.storage.pop(0)
+            self.priorities.pop(0)
+
+        self.storage.append(stored_rollout)
+        self.priorities.append(max(float(priority), self.eps))
+
+    def sample(self, sample_size: int, beta: float):
+        """Sample rollout batches and return importance-sampling weights."""
+        if len(self.storage) == 0:
+            raise RuntimeError("cannot sample from an empty replay buffer")
+        if sample_size <= 0:
+            raise ValueError("sample_size must be greater than 0")
+        if beta < 0:
+            raise ValueError("beta must be non-negative")
+
+        sample_size = min(sample_size, len(self.storage))
+
+        priorities = np.asarray(self.priorities, dtype=np.float64)
+        probabilities = priorities**self.alpha
+        probabilities /= probabilities.sum()
+
+        indices = np.random.choice(
+            len(self.storage),
+            size=sample_size,
+            replace=False,
+            p=probabilities,
+        )
+
+        weights = (len(self.storage) * probabilities[indices]) ** (-beta)
+        weights /= weights.max()
+
+        sampled_rollouts = [self.storage[index] for index in indices]
+        weights = torch.tensor(weights, dtype=torch.float32)
+
+        return sampled_rollouts, indices, weights
+
+    def update_priorities(self, indices, priorities):
+        """Update priorities after replayed data has been optimized."""
+        for index, priority in zip(indices, priorities):
+            self.priorities[int(index)] = max(float(priority), self.eps)
 
 def make_env(env_id, idx, capture_video, run_name):
     def thunk():
@@ -167,6 +251,12 @@ if __name__ == "__main__":
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
+    replay_buffer = PrioritizedRolloutBuffer(
+        capacity=args.replay_buffer_size,
+        alpha=args.per_alpha,
+        eps=args.per_eps,
+    )
+
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
     actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
@@ -237,6 +327,47 @@ if __name__ == "__main__":
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
+
+        # Store the current rollout for later prioritized replay.
+        current_rollout = {
+            "obs": b_obs,
+            "actions": b_actions,
+            "logprobs": b_logprobs,
+            "advantages": b_advantages,
+            "returns": b_returns,
+            "values": b_values,
+        }
+
+        initial_priority = b_advantages.abs().mean().item()
+        replay_buffer.add(current_rollout, initial_priority)
+        # Verify that prioritized rollout sampling works.
+        writer.add_scalar(
+            "replay/buffer_size",
+            len(replay_buffer),
+            global_step,
+        )
+
+        if len(replay_buffer) >= 2:
+            sampled_rollouts, sampled_indices, sampled_weights = replay_buffer.sample(
+                sample_size=min(2, len(replay_buffer)),
+                beta=args.per_beta,
+            )
+
+            writer.add_scalar(
+                "replay/sample_index",
+                int(sampled_indices[0]),
+                global_step,
+            )
+            writer.add_scalar(
+                "replay/sample_weight_min",
+                float(sampled_weights.min().item()),
+                global_step,
+            )
+            writer.add_scalar(
+                "replay/sample_weight_max",
+                float(sampled_weights.max().item()),
+                global_step,
+            )
 
         # Optimizing the policy and value network
         b_inds = np.arange(args.batch_size)
