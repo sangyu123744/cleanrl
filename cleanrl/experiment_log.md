@@ -100,3 +100,56 @@ python -m cleanrl.dqn --env-id CartPole-v1 --total-timesteps 100000 --seed 2
 - CSV result file: `results/CartPole-v1__dqn__2__1784177855.csv`
 
 The DQN baseline achieved better late-stage performance under seed 2 than under seed 1, but it still did not stably reach the maximum return of 500. The difference between the two runs shows that the baseline is sensitive to the random seed.
+## DQN+PER — CartPole-v1 — Seed 1
+
+- Algorithm: DQN with Prioritized Experience Replay
+- Codebase: CleanRL-based implementation
+- Environment: CartPole-v1
+- Seed: 1
+- Total timesteps: 100000
+- PER alpha: 0.6
+- PER beta: linearly annealed from 0.4 to 1.0
+- PER epsilon: 1e-6
+
+### Command
+
+```bash
+python -m cleanrl.dqn_per --env-id CartPole-v1 --total-timesteps 100000 --seed 1
+```
+
+### Result and Conclusion
+
+- Final observed episodic return: 451
+- Final smoothed episodic return: approximately 443
+- Training completed without errors
+- TensorBoard log directory: `runs/CartPole-v1__dqn_per__1__1784188987`
+- CSV result file: `results/CartPole-v1__dqn_per__1__1784188987.csv`
+
+Under seed 1, DQN with prioritized experience replay achieved substantially higher late-stage performance than the standard DQN baseline. The smoothed episodic return increased from approximately 205 for standard DQN to approximately 443 for DQN+PER.
+
+## DQN+PER — CartPole-v1 — Seed 2
+
+- Algorithm: DQN with Prioritized Experience Replay
+- Codebase: CleanRL-based implementation
+- Environment: CartPole-v1
+- Seed: 2
+- Total timesteps: 100000
+- PER alpha: 0.6
+- PER beta: linearly annealed from 0.4 to 1.0
+- PER epsilon: 1e-6
+
+### Command
+
+```bash
+python -m cleanrl.dqn_per --env-id CartPole-v1 --total-timesteps 100000 --seed 2
+```
+
+### Result and Conclusion
+
+- Final observed episodic return: 207
+- Final smoothed episodic return: approximately 208
+- Training completed without errors
+- TensorBoard log directory: `runs/CartPole-v1__dqn_per__2__1784257827`
+- CSV result file: `results/CartPole-v1__dqn_per__2__1784257827.csv`
+
+Under seed 2, DQN+PER performed worse than the standard DQN baseline, whose final smoothed episodic return was approximately 332. The opposite outcomes under seeds 1 and 2 indicate that the current PER implementation and hyperparameter configuration are sensitive to random initialization. Two seeds are insufficient to conclude that PER provides a stable improvement.
