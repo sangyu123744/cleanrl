@@ -153,3 +153,29 @@ python -m cleanrl.dqn_per --env-id CartPole-v1 --total-timesteps 100000 --seed 2
 - CSV result file: `results/CartPole-v1__dqn_per__2__1784257827.csv`
 
 Under seed 2, DQN+PER performed worse than the standard DQN baseline, whose final smoothed episodic return was approximately 332. The opposite outcomes under seeds 1 and 2 indicate that the current PER implementation and hyperparameter configuration are sensitive to random initialization. Two seeds are insufficient to conclude that PER provides a stable improvement.
+## DQN vs DQN+PER — Five-Seed Aggregate Analysis
+
+- Environment: CartPole-v1
+- Algorithms: DQN and DQN with Prioritized Experience Replay
+- Seeds: 1, 2, 3, 4, 5
+- Total timesteps per run: 100000
+- Evaluation metric: mean episodic return over the final 20 logged episodes
+
+### Aggregate Results
+
+- DQN final-20 return: 243.55 ± 65.58
+- DQN+PER final-20 return: 351.05 ± 88.18
+- Absolute improvement: 107.50
+- Relative improvement: approximately 44.1%
+- Seeds in which DQN+PER outperformed DQN: 4 out of 5
+- Mean maximum return:
+  - DQN: 475.0
+  - DQN+PER: 498.0
+
+Across five random seeds, DQN+PER achieved a substantially higher mean late-stage episodic return than standard DQN. The averaged learning curve also shows that DQN+PER generally maintained higher returns after approximately 25000 environment steps. However, DQN+PER had a larger cross-seed standard deviation and performed worse than standard DQN under seed 2. These results indicate that prioritized experience replay improved overall performance in the current experimental setting, but the method remained sensitive to random initialization.
+
+### Generated Analysis Files
+
+- `results/analysis/per_seed_summary.csv`
+- `results/analysis/group_summary.csv`
+- `results/analysis/dqn_vs_dqn_per_mean_std.png`

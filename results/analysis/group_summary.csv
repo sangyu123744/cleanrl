@@ -1,0 +1,3 @@
+﻿Algorithm,NumberOfSeeds,MeanFinal20Return,StdFinal20Return,MinFinal20Return,MaxFinal20Return,MeanMaximumReturn
+DQN,5,243.55,65.5751000761722,187.0,321.15,475.0
+DQN+PER,5,351.05,88.17644243220522,215.35,430.9,498.0
