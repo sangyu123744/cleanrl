@@ -219,6 +219,7 @@ def compute_ppo_losses(
     clip_coef,
     clip_vloss,
     norm_adv,
+    sample_weights=None,
 ):
     """Compute PPO losses for one minibatch."""
 
@@ -242,6 +243,24 @@ def compute_ppo_losses(
             advantages - advantages.mean()
         ) / (advantages.std() + 1e-8)
 
+    def weighted_mean(values):
+        values = values.reshape(-1)
+
+        if sample_weights is None:
+            return values.mean()
+
+        weights = sample_weights.to(
+            device=values.device,
+            dtype=values.dtype,
+        ).reshape(-1)
+
+        if weights.numel() != values.numel():
+            raise ValueError(
+                "sample_weights and loss values must have the same size"
+            )
+
+        return (weights * values).mean()
+
     # Policy loss
     pg_loss1 = -advantages * ratio
     pg_loss2 = -advantages * torch.clamp(
@@ -249,8 +268,9 @@ def compute_ppo_losses(
         1 - clip_coef,
         1 + clip_coef,
     )
-    pg_loss = torch.max(pg_loss1, pg_loss2).mean()
-
+    pg_loss = weighted_mean(
+        torch.max(pg_loss1, pg_loss2)
+    )
     # Value loss
     newvalue = newvalue.view(-1)
 
@@ -264,14 +284,17 @@ def compute_ppo_losses(
         )
 
         v_loss_clipped = (v_clipped - returns) ** 2
-        v_loss = 0.5 * torch.max(
+        v_loss_per_sample = 0.5 * torch.max(
             v_loss_unclipped,
             v_loss_clipped,
-        ).mean()
+        )
     else:
-        v_loss = 0.5 * ((newvalue - returns) ** 2).mean()
+        v_loss_per_sample = 0.5 * (
+            (newvalue - returns) ** 2
+        )
 
-    entropy_loss = entropy.mean()
+    v_loss = weighted_mean(v_loss_per_sample)
+    entropy_loss = weighted_mean(entropy)
 
     return (
         pg_loss,
