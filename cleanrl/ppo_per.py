@@ -422,46 +422,7 @@ if __name__ == "__main__":
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
 
-        # Store the current rollout for later prioritized replay.
-        current_rollout = {
-            "obs": b_obs,
-            "actions": b_actions,
-            "logprobs": b_logprobs,
-            "advantages": b_advantages,
-            "returns": b_returns,
-            "values": b_values,
-        }
 
-        initial_priority = b_advantages.abs().mean().item()
-        replay_buffer.add(current_rollout, initial_priority)
-        # Verify that prioritized rollout sampling works.
-        writer.add_scalar(
-            "replay/buffer_size",
-            len(replay_buffer),
-            global_step,
-        )
-
-        if len(replay_buffer) >= 2:
-            sampled_rollouts, sampled_indices, sampled_weights = replay_buffer.sample(
-                sample_size=min(2, len(replay_buffer)),
-                beta=args.per_beta,
-            )
-
-            writer.add_scalar(
-                "replay/sample_index",
-                int(sampled_indices[0]),
-                global_step,
-            )
-            writer.add_scalar(
-                "replay/sample_weight_min",
-                float(sampled_weights.min().item()),
-                global_step,
-            )
-            writer.add_scalar(
-                "replay/sample_weight_max",
-                float(sampled_weights.max().item()),
-                global_step,
-            )
 
         # Optimizing the policy and value network
         b_inds = np.arange(args.batch_size)
@@ -502,6 +463,30 @@ if __name__ == "__main__":
 
             if args.target_kl is not None and approx_kl > args.target_kl:
                 break
+            # Store the completed on-policy rollout for future replay.
+            current_rollout = {
+                "obs": b_obs,
+                "actions": b_actions,
+                "logprobs": b_logprobs,
+                "advantages": b_advantages,
+                "returns": b_returns,
+                "values": b_values,
+            }
+
+            initial_priority = (
+                    b_returns - b_values
+            ).abs().mean().item()
+
+            replay_buffer.add(
+                current_rollout,
+                initial_priority,
+            )
+
+            writer.add_scalar(
+                "replay/buffer_size",
+                len(replay_buffer),
+                global_step,
+            )
 
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
