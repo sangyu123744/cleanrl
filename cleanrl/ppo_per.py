@@ -208,7 +208,49 @@ class Agent(nn.Module):
         if action is None:
             action = probs.sample()
         return action, probs.log_prob(action), probs.entropy(), self.critic(x)
+def compute_ppo_losses(
+    agent,
+    observations,
+    actions,
+    old_logprobs,
+    advantages,
+    returns,
+    old_values,
+    clip_coef,
+    clip_vloss,
+    norm_adv,
+):
+    """Compute PPO losses for one minibatch."""
 
+    (
+        pg_loss,
+        v_loss,
+        entropy_loss,
+        old_approx_kl,
+        approx_kl,
+        clipfrac,
+    ) = compute_ppo_losses(
+        agent=agent,
+        observations=b_obs[mb_inds],
+        actions=b_actions[mb_inds],
+        old_logprobs=b_logprobs[mb_inds],
+        advantages=b_advantages[mb_inds],
+        returns=b_returns[mb_inds],
+        old_values=b_values[mb_inds],
+        clip_coef=args.clip_coef,
+        clip_vloss=args.clip_vloss,
+        norm_adv=args.norm_adv,
+    )
+
+    clipfracs.append(clipfrac.item())
+    return (
+        pg_loss,
+        v_loss,
+        entropy_loss,
+        old_approx_kl,
+        approx_kl,
+        clipfrac,
+    )
 
 if __name__ == "__main__":
     args = tyro.cli(Args)
