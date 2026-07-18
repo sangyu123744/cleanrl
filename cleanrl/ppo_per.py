@@ -222,27 +222,57 @@ def compute_ppo_losses(
 ):
     """Compute PPO losses for one minibatch."""
 
-    (
-        pg_loss,
-        v_loss,
-        entropy_loss,
-        old_approx_kl,
-        approx_kl,
-        clipfrac,
-    ) = compute_ppo_losses(
-        agent=agent,
-        observations=b_obs[mb_inds],
-        actions=b_actions[mb_inds],
-        old_logprobs=b_logprobs[mb_inds],
-        advantages=b_advantages[mb_inds],
-        returns=b_returns[mb_inds],
-        old_values=b_values[mb_inds],
-        clip_coef=args.clip_coef,
-        clip_vloss=args.clip_vloss,
-        norm_adv=args.norm_adv,
+    _, newlogprob, entropy, newvalue = agent.get_action_and_value(
+        observations,
+        actions.long(),
     )
 
-    clipfracs.append(clipfrac.item())
+    logratio = newlogprob - old_logprobs
+    ratio = logratio.exp()
+
+    with torch.no_grad():
+        old_approx_kl = (-logratio).mean()
+        approx_kl = ((ratio - 1) - logratio).mean()
+        clipfrac = (
+            (ratio - 1.0).abs() > clip_coef
+        ).float().mean()
+
+    if norm_adv:
+        advantages = (
+            advantages - advantages.mean()
+        ) / (advantages.std() + 1e-8)
+
+    # Policy loss
+    pg_loss1 = -advantages * ratio
+    pg_loss2 = -advantages * torch.clamp(
+        ratio,
+        1 - clip_coef,
+        1 + clip_coef,
+    )
+    pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+
+    # Value loss
+    newvalue = newvalue.view(-1)
+
+    if clip_vloss:
+        v_loss_unclipped = (newvalue - returns) ** 2
+
+        v_clipped = old_values + torch.clamp(
+            newvalue - old_values,
+            -clip_coef,
+            clip_coef,
+        )
+
+        v_loss_clipped = (v_clipped - returns) ** 2
+        v_loss = 0.5 * torch.max(
+            v_loss_unclipped,
+            v_loss_clipped,
+        ).mean()
+    else:
+        v_loss = 0.5 * ((newvalue - returns) ** 2).mean()
+
+    entropy_loss = entropy.mean()
+
     return (
         pg_loss,
         v_loss,
@@ -251,7 +281,6 @@ def compute_ppo_losses(
         approx_kl,
         clipfrac,
     )
-
 if __name__ == "__main__":
     args = tyro.cli(Args)
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -420,41 +449,27 @@ if __name__ == "__main__":
                 end = start + args.minibatch_size
                 mb_inds = b_inds[start:end]
 
-                _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions.long()[mb_inds])
-                logratio = newlogprob - b_logprobs[mb_inds]
-                ratio = logratio.exp()
+                (
+                    pg_loss,
+                    v_loss,
+                    entropy_loss,
+                    old_approx_kl,
+                    approx_kl,
+                    clipfrac,
+                ) = compute_ppo_losses(
+                    agent=agent,
+                    observations=b_obs[mb_inds],
+                    actions=b_actions[mb_inds],
+                    old_logprobs=b_logprobs[mb_inds],
+                    advantages=b_advantages[mb_inds],
+                    returns=b_returns[mb_inds],
+                    old_values=b_values[mb_inds],
+                    clip_coef=args.clip_coef,
+                    clip_vloss=args.clip_vloss,
+                    norm_adv=args.norm_adv,
+                )
 
-                with torch.no_grad():
-                    # calculate approx_kl http://joschu.net/blog/kl-approx.html
-                    old_approx_kl = (-logratio).mean()
-                    approx_kl = ((ratio - 1) - logratio).mean()
-                    clipfracs += [((ratio - 1.0).abs() > args.clip_coef).float().mean().item()]
-
-                mb_advantages = b_advantages[mb_inds]
-                if args.norm_adv:
-                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
-
-                # Policy loss
-                pg_loss1 = -mb_advantages * ratio
-                pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
-                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
-
-                # Value loss
-                newvalue = newvalue.view(-1)
-                if args.clip_vloss:
-                    v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
-                    v_clipped = b_values[mb_inds] + torch.clamp(
-                        newvalue - b_values[mb_inds],
-                        -args.clip_coef,
-                        args.clip_coef,
-                    )
-                    v_loss_clipped = (v_clipped - b_returns[mb_inds]) ** 2
-                    v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
-                    v_loss = 0.5 * v_loss_max.mean()
-                else:
-                    v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
-
-                entropy_loss = entropy.mean()
+                clipfracs.append(clipfrac.item())
                 loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
 
                 optimizer.zero_grad()
