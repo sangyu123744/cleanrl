@@ -531,30 +531,190 @@ if __name__ == "__main__":
 
             if args.target_kl is not None and approx_kl > args.target_kl:
                 break
-            # Store the completed on-policy rollout for future replay.
-            current_rollout = {
-                "obs": b_obs,
-                "actions": b_actions,
-                "logprobs": b_logprobs,
-                "advantages": b_advantages,
-                "returns": b_returns,
-                "values": b_values,
-            }
+        # Perform an additional weighted PPO update using historical rollouts.
+        replay_sample_count = int(
+            args.batch_size * args.replay_ratio
+        )
 
-            initial_priority = (
-                    b_returns - b_values
-            ).abs().mean().item()
-
-            replay_buffer.add(
-                current_rollout,
-                initial_priority,
+        if len(replay_buffer) > 0 and replay_sample_count > 0:
+            rollout_sample_count = min(
+                len(replay_buffer),
+                max(
+                    1,
+                    int(
+                        np.ceil(
+                            replay_sample_count
+                            / args.batch_size
+                        )
+                    ),
+                ),
             )
+
+            (
+                sampled_rollouts,
+                sampled_indices,
+                sampled_weights,
+            ) = replay_buffer.sample(
+                sample_size=rollout_sample_count,
+                beta=args.per_beta,
+            )
+
+            replay_batch, replay_weights = build_replay_batch(
+                sampled_rollouts=sampled_rollouts,
+                rollout_weights=sampled_weights,
+                sample_count=replay_sample_count,
+                device=device,
+            )
+
+            replay_size = replay_batch[
+                "advantages"
+            ].shape[0]
+
+            replay_inds = np.arange(replay_size)
+            np.random.shuffle(replay_inds)
+
+            replay_update_count = 0
+            replay_last_kl = 0.0
+
+            for start in range(
+                    0,
+                    replay_size,
+                    args.minibatch_size,
+            ):
+                end = min(
+                    start + args.minibatch_size,
+                    replay_size,
+                )
+
+                replay_mb_inds = torch.as_tensor(
+                    replay_inds[start:end],
+                    dtype=torch.long,
+                    device=device,
+                )
+
+                (
+                    replay_pg_loss,
+                    replay_v_loss,
+                    replay_entropy_loss,
+                    replay_old_approx_kl,
+                    replay_approx_kl,
+                    replay_clipfrac,
+                ) = compute_ppo_losses(
+                    agent=agent,
+                    observations=replay_batch["obs"][
+                        replay_mb_inds
+                    ],
+                    actions=replay_batch["actions"][
+                        replay_mb_inds
+                    ],
+                    old_logprobs=replay_batch["logprobs"][
+                        replay_mb_inds
+                    ],
+                    advantages=replay_batch["advantages"][
+                        replay_mb_inds
+                    ],
+                    returns=replay_batch["returns"][
+                        replay_mb_inds
+                    ],
+                    old_values=replay_batch["values"][
+                        replay_mb_inds
+                    ],
+                    clip_coef=args.clip_coef,
+                    clip_vloss=args.clip_vloss,
+                    norm_adv=args.norm_adv,
+                    sample_weights=replay_weights[
+                        replay_mb_inds
+                    ],
+                )
+
+                replay_last_kl = float(
+                    replay_approx_kl.item()
+                )
+
+                if (
+                        args.target_kl is not None
+                        and replay_approx_kl
+                        > args.target_kl
+                ):
+                    break
+
+                replay_loss = (
+                        replay_pg_loss
+                        - args.ent_coef
+                        * replay_entropy_loss
+                        + args.vf_coef
+                        * replay_v_loss
+                )
+
+                optimizer.zero_grad()
+                replay_loss.backward()
+                nn.utils.clip_grad_norm_(
+                    agent.parameters(),
+                    args.max_grad_norm,
+                )
+                optimizer.step()
+
+                replay_update_count += 1
 
             writer.add_scalar(
-                "replay/buffer_size",
-                len(replay_buffer),
+                "replay/sample_count",
+                replay_size,
                 global_step,
             )
+            writer.add_scalar(
+                "replay/rollout_count",
+                rollout_sample_count,
+                global_step,
+            )
+            writer.add_scalar(
+                "replay/update_count",
+                replay_update_count,
+                global_step,
+            )
+            writer.add_scalar(
+                "replay/approx_kl",
+                replay_last_kl,
+                global_step,
+            )
+            writer.add_scalar(
+                "replay/sample_weight_min",
+                float(sampled_weights.min().item()),
+                global_step,
+            )
+            writer.add_scalar(
+                "replay/sample_weight_max",
+                float(sampled_weights.max().item()),
+                global_step,
+            )
+            writer.add_scalar(
+                "replay/sample_index",
+                int(sampled_indices[0]),
+                global_step,
+            )
+        # Store the completed on-policy rollout for future replay.
+        current_rollout = {
+            "obs": b_obs,
+            "actions": b_actions,
+            "logprobs": b_logprobs,
+            "advantages": b_advantages,
+            "returns": b_returns,
+            "values": b_values,
+        }
+
+        initial_priority = (
+                b_returns - b_values
+        ).abs().mean().item()
+
+        replay_buffer.add(
+            current_rollout,
+            initial_priority,
+        )
+
+        writer.add_scalar(
+            "replay/buffer_size",
+            len(replay_buffer),
+            global_step,
+        )
 
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
