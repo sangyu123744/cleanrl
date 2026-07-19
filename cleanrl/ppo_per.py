@@ -304,6 +304,74 @@ def compute_ppo_losses(
         approx_kl,
         clipfrac,
     )
+def build_replay_batch(
+    sampled_rollouts,
+    rollout_weights,
+    sample_count,
+    device,
+):
+    """Merge sampled rollouts and expand rollout weights to sample weights."""
+
+    if len(sampled_rollouts) == 0:
+        raise ValueError("sampled_rollouts must not be empty")
+
+    if len(sampled_rollouts) != len(rollout_weights):
+        raise ValueError(
+            "sampled_rollouts and rollout_weights must have the same size"
+        )
+
+    if sample_count <= 0:
+        raise ValueError("sample_count must be greater than 0")
+
+    keys = (
+        "obs",
+        "actions",
+        "logprobs",
+        "advantages",
+        "returns",
+        "values",
+    )
+
+    merged = {
+        key: torch.cat(
+            [rollout[key] for rollout in sampled_rollouts],
+            dim=0,
+        )
+        for key in keys
+    }
+
+    expanded_weights = torch.cat(
+        [
+            torch.full(
+                (rollout["advantages"].shape[0],),
+                float(weight.item()),
+                dtype=torch.float32,
+            )
+            for rollout, weight in zip(
+                sampled_rollouts,
+                rollout_weights,
+            )
+        ],
+        dim=0,
+    )
+
+    total_samples = merged["advantages"].shape[0]
+    sample_count = min(sample_count, total_samples)
+
+    selected_indices = torch.randperm(
+        total_samples
+    )[:sample_count]
+
+    replay_batch = {
+        key: value[selected_indices].to(device)
+        for key, value in merged.items()
+    }
+
+    replay_weights = expanded_weights[
+        selected_indices
+    ].to(device)
+
+    return replay_batch, replay_weights
 if __name__ == "__main__":
     args = tyro.cli(Args)
     args.batch_size = int(args.num_envs * args.num_steps)
