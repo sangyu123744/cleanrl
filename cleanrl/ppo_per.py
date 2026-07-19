@@ -691,6 +691,44 @@ if __name__ == "__main__":
                 int(sampled_indices[0]),
                 global_step,
             )
+            # Recompute rollout priorities after replay optimization.
+            updated_priorities = []
+
+            with torch.no_grad():
+                for rollout in sampled_rollouts:
+                    rollout_obs = rollout["obs"].to(device)
+                    rollout_returns = rollout["returns"].to(device)
+
+                    current_values = agent.get_value(
+                        rollout_obs
+                    ).view(-1)
+
+                    priority = (
+                            current_values - rollout_returns
+                    ).abs().mean().item()
+
+                    updated_priorities.append(priority)
+
+            replay_buffer.update_priorities(
+                sampled_indices,
+                updated_priorities,
+            )
+
+            writer.add_scalar(
+                "replay/priority_mean",
+                float(np.mean(updated_priorities)),
+                global_step,
+            )
+            writer.add_scalar(
+                "replay/priority_min",
+                float(np.min(updated_priorities)),
+                global_step,
+            )
+            writer.add_scalar(
+                "replay/priority_max",
+                float(np.max(updated_priorities)),
+                global_step,
+            )
         # Store the completed on-policy rollout for future replay.
         current_rollout = {
             "obs": b_obs,
