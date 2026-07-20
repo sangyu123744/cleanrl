@@ -75,6 +75,8 @@ class Args:
 
     replay_ratio: float = 0.5
     """fraction of optimization data sampled from replayed rollouts"""
+    replay_rollout_count: int = 4
+    """number of historical rollout batches considered in each replay update"""
 
     per_alpha: float = 0.6
     """priority exponent; 0 means uniform sampling"""
@@ -259,7 +261,7 @@ def compute_ppo_losses(
                 "sample_weights and loss values must have the same size"
             )
 
-        return (weights * values).mean()
+        return (weights * values).sum() / weights.sum().clamp_min(1e-8)
 
     # Policy loss
     pg_loss1 = -advantages * ratio
@@ -539,15 +541,7 @@ if __name__ == "__main__":
         if len(replay_buffer) > 0 and replay_sample_count > 0:
             rollout_sample_count = min(
                 len(replay_buffer),
-                max(
-                    1,
-                    int(
-                        np.ceil(
-                            replay_sample_count
-                            / args.batch_size
-                        )
-                    ),
-                ),
+                args.replay_rollout_count,
             )
 
             (
