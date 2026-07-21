@@ -1,0 +1,16 @@
+algorithm,label,seed,run_dir,last_step,episodes,overall_mean_return,final20_mean_return,final100_mean_return,normalized_auc_return,solve_step_100ep_at_475,max_return
+ppo,PPO,1,runs\CartPole-v1__ppo__1__1784437110,499712,1509,330.5374420145792,500.0,496.77,414.5017005105039,243588.0,500.0
+ppo,PPO,2,runs\CartPole-v1__ppo__2__1784437811,499712,1506,331.55644090305447,500.0,497.82,413.6860397541405,225732.0,500.0
+ppo,PPO,3,runs\CartPole-v1__ppo__3__1784439702,499712,1532,325.427545691906,473.65,477.84,409.93890920104747,227444.0,500.0
+ppo,PPO,4,runs\CartPole-v1__ppo__4__1784518887,499712,1512,329.78902116402116,500.0,491.38,412.21743134137097,240952.0,500.0
+ppo,PPO,5,runs\CartPole-v1__ppo__5__1784519874,499712,1512,329.396164021164,484.75,485.19,413.4187859796409,225364.0,500.0
+ppo_uniform_replay_ablation,PPO + uniform replay,1,runs\CartPole-v1__ppo_uniform_replay_ablation__1__1784558531,499712,1701,292.92298647854204,490.3,496.93,412.90227221685785,217600.0,500.0
+ppo_uniform_replay_ablation,PPO + uniform replay,2,runs\CartPole-v1__ppo_uniform_replay_ablation__2__1784599005,499712,1597,312.27363807138386,500.0,496.97,421.53220471909634,204780.0,500.0
+ppo_uniform_replay_ablation,PPO + uniform replay,3,runs\CartPole-v1__ppo_uniform_replay_ablation__3__1784599800,499712,1639,304.3276388041489,481.7,473.92,414.72782883007227,268364.0,500.0
+ppo_uniform_replay_ablation,PPO + uniform replay,4,runs\CartPole-v1__ppo_uniform_replay_ablation__4__1784600693,499712,1563,319.01919385796543,474.8,486.4,415.883204426531,231320.0,500.0
+ppo_uniform_replay_ablation,PPO + uniform replay,5,runs\CartPole-v1__ppo_uniform_replay_ablation__5__1784601552,499712,1626,306.48523985239854,478.85,487.32,422.6993575768202,214416.0,500.0
+ppo_prioritized_replay_ablation,PPO + prioritized replay,1,runs\CartPole-v1__ppo_prioritized_replay_ablation__1__1784602550,499712,1628,306.32800982800984,500.0,489.75,413.3147220727025,225380.0,500.0
+ppo_prioritized_replay_ablation,PPO + prioritized replay,2,runs\CartPole-v1__ppo_prioritized_replay_ablation__2__1784603478,499712,1569,317.9764181007011,489.0,482.43,419.7230790842478,282584.0,500.0
+ppo_prioritized_replay_ablation,PPO + prioritized replay,3,runs\CartPole-v1__ppo_prioritized_replay_ablation__3__1784604342,499712,1633,305.6405388854868,492.95,482.29,413.9781888915208,193096.0,500.0
+ppo_prioritized_replay_ablation,PPO + prioritized replay,4,runs\CartPole-v1__ppo_prioritized_replay_ablation__4__1784605154,499712,1576,316.45558375634516,491.55,491.64,419.4441504638151,243668.0,500.0
+ppo_prioritized_replay_ablation,PPO + prioritized replay,5,runs\CartPole-v1__ppo_prioritized_replay_ablation__5__1784632367,499712,1599,311.91119449656037,486.5,481.48,424.376448250476,274352.0,500.0
